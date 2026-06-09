@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Video Walkie Phone v1.3</title>
+<style>
+  :root{--bg:#101820;--panel:#1c2b36;--accent:#4cc9f0;--good:#32d583;--bad:#ff6b6b;--warn:#ffd166;--text:#f5f7fa;--muted:#b8c2cc}
+  *{box-sizing:border-box} body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#07111a,#132635);color:var(--text)}
+  .app{max-width:980px;margin:0 auto;padding:14px}.phone{border:3px solid #314b5f;border-radius:28px;padding:14px;background:#0b1720;box-shadow:0 0 30px rgba(0,0,0,.45)}
+  h1{font-size:1.35rem;text-align:center;margin:6px 0 10px}.status{padding:10px;border-radius:14px;background:#152635;margin:8px 0;font-weight:bold;text-align:center}.status small{display:block;color:var(--muted);font-weight:normal;margin-top:4px}
+  .videos{display:grid;grid-template-columns:1fr 1fr;gap:12px}.videoBox{background:#05090d;border:2px solid #314b5f;border-radius:18px;overflow:hidden;min-height:230px;position:relative}.videoBox h2{position:absolute;top:8px;left:10px;margin:0;font-size:.9rem;background:rgba(0,0,0,.55);padding:5px 8px;border-radius:8px;z-index:2}.videoBox .placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8192a0;text-align:center;padding:16px} video{width:100%;height:100%;min-height:230px;object-fit:cover;background:#000;display:block}
+  .controls{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}button,select,textarea,input{font:inherit;border-radius:12px;border:1px solid #406176;background:#152635;color:var(--text);padding:11px}button{cursor:pointer;font-weight:bold;background:#20394b}button:hover{filter:brightness(1.15)}button.primary{background:#126782}button.talk{background:#9d4edd;font-size:1.1rem;grid-column:span 3;padding:16px}button.danger{background:#823038}.row{display:grid;grid-template-columns:1fr auto;gap:8px;margin:8px 0}.codes{display:grid;grid-template-columns:1fr 1fr;gap:10px}.codes textarea{width:100%;height:120px;font-size:.78rem}.note{font-size:.9rem;color:var(--muted);line-height:1.35}.badge{display:inline-block;padding:2px 8px;border-radius:99px;background:#263b4b;color:var(--muted);font-size:.78rem;margin-left:6px}@media(max-width:720px){.videos,.codes{grid-template-columns:1fr}.controls{grid-template-columns:1fr 1fr}.talk{grid-column:span 2!important}.videoBox,video{min-height:210px}}
+</style>
+</head>
+<body>
+<div class="app"><div class="phone">
+  <h1>📹 Video Walkie Phone <span class="badge">v1.3</span></h1>
+  <div id="status" class="status">Ready<small>Press Start Camera. Your local video should appear immediately.</small></div>
+
+  <div class="videos">
+    <div class="videoBox"><h2>Your Camera</h2><div id="localPlaceholder" class="placeholder">Camera not started</div><video id="localVideo" autoplay playsinline muted></video></div>
+    <div class="videoBox"><h2>Remote User</h2><div id="remotePlaceholder" class="placeholder">Waiting for call</div><video id="remoteVideo" autoplay playsinline></video></div>
+  </div>
+
+  <div class="row"><select id="cameraSelect"><option value="">Camera list not loaded</option></select><button id="refreshBtn">Refresh Cameras</button></div>
+  <div class="controls">
+    <button id="startBtn" class="primary">Start Camera</button>
+    <button id="audioOnlyBtn">Audio Only</button>
+    <button id="stopBtn" class="danger">Stop</button>
+    <button id="createBtn">Create Call</button>
+    <button id="answerBtn">Answer Call</button>
+    <button id="finishBtn">Finish Connect</button>
+    <button id="talkBtn" class="talk">Hold to Talk</button>
+  </div>
+
+  <div class="codes">
+    <div><label>Local Code / Send This</label><textarea id="localCode" readonly></textarea><button id="copyBtn">Copy Local Code</button></div>
+    <div><label>Remote Code / Paste Here</label><textarea id="remoteCode"></textarea></div>
+  </div>
+  <p class="note"><b>Important:</b> camera access usually requires HTTPS or localhost. Opening this as a plain file may fail in some browsers. If the camera is already used by Zoom/Teams/OBS, close those first.</p>
+</div></div>
+<script>
+const $=id=>document.getElementById(id);
+const localVideo=$('localVideo'), remoteVideo=$('remoteVideo'), statusBox=$('status'), cameraSelect=$('cameraSelect');
+let localStream=null, pc=null, dataChannel=null, micTrack=null;
+function setStatus(msg, detail=''){statusBox.innerHTML=msg+(detail?'<small>'+detail+'</small>':'');}
+function showLocal(on){$('localPlaceholder').style.display=on?'none':'flex';}
+function showRemote(on){$('remotePlaceholder').style.display=on?'none':'flex';}
+async function listCameras(){
+  try{
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const cams=devices.filter(d=>d.kind==='videoinput');
+    cameraSelect.innerHTML='';
+    if(!cams.length){cameraSelect.innerHTML='<option value="">No camera detected</option>';setStatus('⚠️ No camera detected','You can still try Audio Only. Plug in USB camera then press Refresh Cameras.');return []}
+    cams.forEach((cam,i)=>{const o=document.createElement('option');o.value=cam.deviceId;o.textContent=cam.label||('Camera '+(i+1));cameraSelect.appendChild(o)});
+    setStatus('✅ Camera detected', cams.length+' camera(s) found. Select one, then press Start Camera.');
+    return cams;
+  }catch(e){setStatus('⚠️ Could not list cameras', e.message);return []}
+}
+async function startCamera(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){setStatus('❌ Camera not supported','This browser does not support camera access.');return}
+  stopLocal(false);
+  setStatus('Starting camera…','Allow camera/microphone permission if asked.');
+  const chosen=cameraSelect.value;
+  const attempts=[];
+  if(chosen) attempts.push({video:{deviceId:{exact:chosen}}, audio:true});
+  attempts.push({video:true,audio:true});
+  attempts.push({video:{facingMode:'user'},audio:true});
+  attempts.push({video:true,audio:false});
+  let lastErr=null;
+  for(const constraints of attempts){
+    try{
+      localStream=await navigator.mediaDevices.getUserMedia(constraints);
+      localVideo.srcObject=localStream; await localVideo.play().catch(()=>{});
+      micTrack=localStream.getAudioTracks()[0]||null;
+      showLocal(true);
+      await listCameras();
+      const vt=localStream.getVideoTracks()[0];
+      const at=localStream.getAudioTracks()[0];
+      setStatus('✅ Local camera working', 'Video: '+(vt?.label||'camera active')+' | Audio: '+(at?.label||'not active'));
+      return;
+    }catch(e){ lastErr=e; }
+  }
+  showLocal(false);
+  const name=lastErr?.name||'CameraError';
+  let help='';
+  if(name==='NotAllowedError') help='Permission was blocked. Click the browser camera icon and allow camera/microphone.';
+  else if(name==='NotFoundError') help='No usable camera was found. Plug in USB camera and press Refresh Cameras.';
+  else if(name==='NotReadableError') help='Camera may be in use by another app like Zoom, Teams, Skype, or OBS.';
+  else if(location.protocol==='file:') help='Try running from HTTPS or localhost; file mode may block camera access.';
+  else help=lastErr?.message||'Unknown camera problem.';
+  setStatus('❌ No local camera working', name+': '+help);
+}
+async function startAudioOnly(){
+  stopLocal(false);
+  try{localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});micTrack=localStream.getAudioTracks()[0]||null;showLocal(false);setStatus('✅ Audio-only mode active', 'No camera required. Hold to Talk will control microphone.');}
+  catch(e){setStatus('❌ Microphone not working', e.name+': '+e.message)}
+}
+function stopLocal(update=true){if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}localVideo.srcObject=null;showLocal(false);if(update)setStatus('Stopped','Camera and microphone stopped.');}
+function setupPC(){pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0];showRemote(true)};if(localStream)localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));return pc}
+async function waitIce(){if(pc.iceGatheringState==='complete')return;await new Promise(resolve=>{pc.onicegatheringstatechange=()=>{if(pc.iceGatheringState==='complete')resolve()};setTimeout(resolve,4000)})}
+async function createCall(){setupPC();dataChannel=pc.createDataChannel('ptt');const offer=await pc.createOffer();await pc.setLocalDescription(offer);await waitIce();$('localCode').value=JSON.stringify(pc.localDescription);setStatus('Call code created','Send the Local Code to the other user.');}
+async function answerCall(){const txt=$('remoteCode').value.trim();if(!txt)return setStatus('Paste caller code first');setupPC();pc.ondatachannel=e=>dataChannel=e.channel;await pc.setRemoteDescription(JSON.parse(txt));const ans=await pc.createAnswer();await pc.setLocalDescription(ans);await waitIce();$('localCode').value=JSON.stringify(pc.localDescription);setStatus('Answer code created','Send the Local Code back to the caller.');}
+async function finishConnect(){const txt=$('remoteCode').value.trim();if(!pc||!txt)return setStatus('Create call first, then paste answer code');await pc.setRemoteDescription(JSON.parse(txt));setStatus('Connected','Remote video/audio should appear when the other user is sending.');}
+function setTalk(on){if(localStream){localStream.getAudioTracks().forEach(t=>t.enabled=on)}$('talkBtn').textContent=on?'Talking… release to stop':'Hold to Talk'}
+$('startBtn').onclick=startCamera;$('audioOnlyBtn').onclick=startAudioOnly;$('stopBtn').onclick=()=>stopLocal(true);$('refreshBtn').onclick=listCameras;$('createBtn').onclick=createCall;$('answerBtn').onclick=answerCall;$('finishBtn').onclick=finishConnect;$('copyBtn').onclick=()=>navigator.clipboard.writeText($('localCode').value||'');
+['mousedown','touchstart'].forEach(ev=>$('talkBtn').addEventListener(ev,e=>{e.preventDefault();setTalk(true)}));['mouseup','mouseleave','touchend','touchcancel'].forEach(ev=>$('talkBtn').addEventListener(ev,e=>{e.preventDefault();setTalk(false)}));
+window.addEventListener('load',listCameras);
+</script>
+</body>
+</html>
