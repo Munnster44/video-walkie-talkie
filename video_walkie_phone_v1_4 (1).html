@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Video Walkie Phone v1.4</title>
+<style>
+:root{--bg:#101820;--panel:#1c2b36;--accent:#4cc9f0;--good:#32d583;--bad:#ff6b6b;--warn:#ffd166;--text:#f5f7fa;--muted:#b8c2cc}
+*{box-sizing:border-box} body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#07111a,#132635);color:var(--text)}
+.app{max-width:1050px;margin:0 auto;padding:14px}.phone{border:3px solid #314b5f;border-radius:28px;padding:14px;background:#0b1720;box-shadow:0 0 30px rgba(0,0,0,.45)}
+h1{font-size:1.35rem;text-align:center;margin:6px 0 10px}.status{padding:10px;border-radius:14px;background:#152635;margin:8px 0;font-weight:bold;text-align:center}.status small{display:block;color:var(--muted);font-weight:normal;margin-top:4px}.ok{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.videos{display:grid;grid-template-columns:1fr 1fr;gap:12px}.videoBox{background:#05090d;border:2px solid #314b5f;border-radius:18px;overflow:hidden;min-height:230px;position:relative}.videoBox h2{position:absolute;top:8px;left:10px;margin:0;font-size:.9rem;background:rgba(0,0,0,.55);padding:5px 8px;border-radius:8px;z-index:2}.videoBox .placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8192a0;text-align:center;padding:16px} video{width:100%;height:100%;min-height:230px;object-fit:cover;background:#000;display:block}
+.controls{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}button,select,textarea,input{font:inherit;border-radius:12px;border:1px solid #406176;background:#152635;color:var(--text);padding:11px}button{cursor:pointer;font-weight:bold;background:#20394b}button:hover{filter:brightness(1.15)}button:disabled{opacity:.45;cursor:not-allowed}button.primary{background:#126782}button.talk{background:#9d4edd;font-size:1.1rem;grid-column:span 3;padding:16px}button.danger{background:#823038}.row{display:grid;grid-template-columns:1fr auto;gap:8px;margin:8px 0}.codes{display:grid;grid-template-columns:1fr 1fr;gap:10px}.codes textarea{width:100%;height:145px;font-size:.76rem}.note{font-size:.9rem;color:var(--muted);line-height:1.35}.badge{display:inline-block;padding:2px 8px;border-radius:99px;background:#263b4b;color:var(--muted);font-size:.78rem;margin-left:6px}.steps{background:#11202c;border:1px solid #314b5f;border-radius:14px;padding:10px;margin:10px 0}.steps b{color:var(--accent)}
+@media(max-width:720px){.videos,.codes{grid-template-columns:1fr}.controls{grid-template-columns:1fr 1fr}.talk{grid-column:span 2!important}.videoBox,video{min-height:210px}}
+</style>
+</head>
+<body>
+<div class="app"><div class="phone">
+<h1>📹 Video Walkie Phone <span class="badge">v1.4 fixed connection</span></h1>
+<div id="status" class="status">Ready<small>Start camera or choose Audio Only. Then exchange codes exactly once.</small></div>
+
+<div class="videos">
+<div class="videoBox"><h2>Your Camera</h2><div id="localPlaceholder" class="placeholder">Camera not started</div><video id="localVideo" autoplay playsinline muted></video></div>
+<div class="videoBox"><h2>Remote User</h2><div id="remotePlaceholder" class="placeholder">Waiting for call</div><video id="remoteVideo" autoplay playsinline></video></div>
+</div>
+
+<div class="row"><select id="cameraSelect"><option value="audio-only">No Camera / Audio Only</option><option value="">Camera list not loaded</option></select><button id="refreshBtn">Refresh Cameras</button></div>
+<div class="controls">
+<button id="startBtn" class="primary">Start Selected</button>
+<button id="audioOnlyBtn">Audio Only</button>
+<button id="stopBtn" class="danger">Stop</button>
+<button id="createBtn">1. Create Call</button>
+<button id="answerBtn">2. Answer Call</button>
+<button id="finishBtn">3. Finish Connect</button>
+<button id="talkBtn" class="talk">Hold to Talk</button>
+</div>
+
+<div class="steps">
+<b>Caller:</b> Start Selected → Create Call → copy Local Code to friend → paste friend’s Answer Code into Remote Code → Finish Connect.<br>
+<b>Friend:</b> Start Selected → paste caller’s code into Remote Code → Answer Call → copy Local Code back to caller.
+</div>
+
+<div class="codes">
+<div><label>Local Code / Send This</label><textarea id="localCode" readonly placeholder="Your call/answer code appears here only when ready."></textarea><button id="copyBtn">Copy Local Code</button></div>
+<div><label>Remote Code / Paste Here</label><textarea id="remoteCode" placeholder="Paste the other person's code here."></textarea></div>
+</div>
+<p class="note"><b>Important:</b> both users need this same v1.4 file. Camera/mic usually requires HTTPS or localhost. If users are on difficult networks, like some school/work Wi‑Fi or mobile networks, a free STUN-only WebRTC app may still fail without a TURN relay server.</p>
+</div></div>
+<script>
+const $=id=>document.getElementById(id);
+const localVideo=$('localVideo'), remoteVideo=$('remoteVideo'), statusBox=$('status'), cameraSelect=$('cameraSelect');
+let localStream=null, pc=null, dataChannel=null;
+function safe(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function setStatus(msg, detail=''){statusBox.innerHTML=msg+(detail?'<small>'+safe(detail)+'</small>':'');}
+function showLocal(on){$('localPlaceholder').style.display=on?'none':'flex';}
+function showRemote(on){$('remotePlaceholder').style.display=on?'none':'flex';}
+function cleanCode(txt){return txt.trim().replace(/^```(json)?/i,'').replace(/```$/,'').trim();}
+async function listCameras(){
+ try{
+  if(!navigator.mediaDevices?.enumerateDevices){setStatus('❌ Media devices not supported','Try Chrome, Edge, Firefox, or Safari.');return []}
+  const devices=await navigator.mediaDevices.enumerateDevices();
+  const cams=devices.filter(d=>d.kind==='videoinput');
+  cameraSelect.innerHTML='<option value="audio-only">No Camera / Audio Only</option>';
+  cams.forEach((cam,i)=>{const o=document.createElement('option');o.value=cam.deviceId;o.textContent=cam.label||('Camera '+(i+1));cameraSelect.appendChild(o)});
+  if(!cams.length){setStatus('⚠️ No camera detected','Use No Camera / Audio Only, or plug in a USB camera and press Refresh Cameras.');}
+  else setStatus('✅ Camera list ready', cams.length+' camera(s) found. Choose one or No Camera / Audio Only.');
+  return cams;
+ }catch(e){setStatus('⚠️ Could not list cameras', e.name+': '+e.message);return []}
+}
+function stopLocal(update=true){if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}localVideo.srcObject=null;showLocal(false);if(update)setStatus('Stopped','Camera and microphone stopped.');}
+async function startSelected(){
+ if(cameraSelect.value==='audio-only') return startAudioOnly();
+ return startCamera();
+}
+async function startCamera(){
+ if(!navigator.mediaDevices?.getUserMedia){setStatus('❌ Camera not supported','This browser does not support camera access.');return}
+ stopLocal(false); setStatus('Starting camera…','Allow camera/microphone permission if asked.');
+ const chosen=cameraSelect.value; const attempts=[];
+ if(chosen) attempts.push({video:{deviceId:{exact:chosen}}, audio:true});
+ attempts.push({video:true,audio:true}); attempts.push({video:{facingMode:'user'},audio:true}); attempts.push({video:true,audio:false});
+ let lastErr=null;
+ for(const constraints of attempts){try{localStream=await navigator.mediaDevices.getUserMedia(constraints);localVideo.srcObject=localStream;await localVideo.play().catch(()=>{});showLocal(!!localStream.getVideoTracks().length);await listCameras();const vt=localStream.getVideoTracks()[0];const at=localStream.getAudioTracks()[0];setStatus('✅ Local camera working','Video: '+(vt?.label||'camera active')+' | Audio: '+(at?.label||'not active'));return;}catch(e){lastErr=e;}}
+ const name=lastErr?.name||'CameraError'; let help='';
+ if(name==='NotAllowedError') help='Permission was blocked. Click the browser camera icon and allow camera/microphone.';
+ else if(name==='NotFoundError') help='No usable camera was found. Use No Camera / Audio Only or plug in USB camera.';
+ else if(name==='NotReadableError') help='Camera may be in use by another app like Zoom, Teams, Skype, or OBS.';
+ else if(location.protocol==='file:') help='Try HTTPS or localhost; file mode may block camera access.';
+ else help=lastErr?.message||'Unknown camera problem.';
+ setStatus('❌ No local camera working', name+': '+help);
+}
+async function startAudioOnly(){
+ if(!navigator.mediaDevices?.getUserMedia){setStatus('❌ Microphone not supported','This browser does not support microphone access.');return}
+ stopLocal(false);
+ try{localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});showLocal(false);setStatus('✅ Audio-only mode active','No camera required. Hold to Talk controls your microphone.');}
+ catch(e){setStatus('❌ Microphone not working', e.name+': '+e.message)}
+}
+function setupPC(){
+ if(pc){try{pc.close()}catch(e){}}
+ pc=new RTCPeerConnection({iceServers:[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302','stun:stun2.l.google.com:19302']}],iceCandidatePoolSize:10});
+ pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0];showRemote(true);setStatus('✅ Connected','Remote media received.');};
+ pc.onconnectionstatechange=()=>setStatus('Connection: '+pc.connectionState,'ICE: '+pc.iceConnectionState+' | Signaling: '+pc.signalingState);
+ pc.oniceconnectionstatechange=()=>{ if(['failed','disconnected'].includes(pc.iceConnectionState)) setStatus('⚠️ Connection problem','ICE state: '+pc.iceConnectionState+'. Try both users on same Wi‑Fi, or use a TURN server.'); };
+ pc.onicecandidateerror=e=>setStatus('⚠️ ICE network warning', e.errorText||'A network candidate failed.');
+ if(localStream)localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
+ return pc;
+}
+async function waitIceComplete(){
+ if(pc.iceGatheringState==='complete') return;
+ setStatus('Preparing code…','Waiting for network candidates. Do not copy yet.');
+ await new Promise(resolve=>{
+  const done=()=>{if(pc.iceGatheringState==='complete'){cleanup();resolve();}};
+  const cleanup=()=>pc.removeEventListener('icegatheringstatechange',done);
+  pc.addEventListener('icegatheringstatechange',done);
+  setTimeout(()=>{cleanup();resolve();},10000);
+ });
+}
+function requireStream(){ if(!localStream){setStatus('Start media first','Press Start Selected or Audio Only before making/answering a call.'); return false;} return true; }
+async function createCall(){
+ if(!requireStream())return; setupPC(); dataChannel=pc.createDataChannel('ptt');
+ const offer=await pc.createOffer({offerToReceiveAudio:true,offerToReceiveVideo:true}); await pc.setLocalDescription(offer); await waitIceComplete();
+ $('localCode').value=JSON.stringify(pc.localDescription); setStatus('✅ Call code ready','Now copy Local Code and send it to the other user.');
+}
+async function answerCall(){
+ if(!requireStream())return; const txt=cleanCode($('remoteCode').value); if(!txt)return setStatus('Paste caller code first','Paste the caller Local Code into Remote Code.');
+ try{setupPC(); pc.ondatachannel=e=>dataChannel=e.channel; await pc.setRemoteDescription(JSON.parse(txt)); const ans=await pc.createAnswer(); await pc.setLocalDescription(ans); await waitIceComplete(); $('localCode').value=JSON.stringify(pc.localDescription); setStatus('✅ Answer code ready','Send this Local Code back to the caller.');}
+ catch(e){setStatus('❌ Could not answer call', e.name+': '+e.message+' — check that the full code was copied.');}
+}
+async function finishConnect(){
+ const txt=cleanCode($('remoteCode').value); if(!pc)return setStatus('Create call first','Caller must press Create Call before Finish Connect.'); if(!txt)return setStatus('Paste answer code first','Paste the friend’s Answer Code into Remote Code.');
+ try{await pc.setRemoteDescription(JSON.parse(txt)); setStatus('Connecting…','Wait up to 20 seconds. If it stays disconnected, the network may need TURN relay.');}
+ catch(e){setStatus('❌ Could not finish connect', e.name+': '+e.message+' — check that you pasted the Answer Code, not the original Call Code.');}
+}
+function setTalk(on){if(localStream){localStream.getAudioTracks().forEach(t=>t.enabled=on)}$('talkBtn').textContent=on?'Talking… release to stop':'Hold to Talk'}
+$('startBtn').onclick=startSelected; $('audioOnlyBtn').onclick=startAudioOnly; $('stopBtn').onclick=()=>stopLocal(true); $('refreshBtn').onclick=listCameras; $('createBtn').onclick=createCall; $('answerBtn').onclick=answerCall; $('finishBtn').onclick=finishConnect; $('copyBtn').onclick=()=>navigator.clipboard.writeText($('localCode').value||'').then(()=>setStatus('Copied','Local Code copied to clipboard.')).catch(()=>setStatus('Copy failed','Select the Local Code and copy it manually.'));
+['mousedown','touchstart'].forEach(ev=>$('talkBtn').addEventListener(ev,e=>{e.preventDefault();setTalk(true)})); ['mouseup','mouseleave','touchend','touchcancel'].forEach(ev=>$('talkBtn').addEventListener(ev,e=>{e.preventDefault();setTalk(false)}));
+window.addEventListener('load',listCameras);
+</script>
+</body>
+</html>
