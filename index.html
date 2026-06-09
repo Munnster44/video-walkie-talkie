@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Video Walkie Phone v1.2</title>
+<style>
+:root{--bg:#0b1220;--panel:#101b32;--panel2:#17233d;--accent:#28d17c;--danger:#ff4d5e;--text:#eef4ff;--muted:#9fb0cc;--line:#2b3a5c;--warn:#ffd166}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Arial,Helvetica,sans-serif;background:radial-gradient(circle at top,#1e335e,#08101f 65%);color:var(--text)}
+body{display:flex;align-items:center;justify-content:center;padding:10px}.phone{width:min(500px,100%);max-height:calc(100vh - 20px);background:#050912;border:8px solid #1d2638;border-radius:34px;box-shadow:0 20px 60px #0009,inset 0 0 0 2px #33425f;display:flex;flex-direction:column;overflow:auto;position:relative}.notch{position:sticky;top:0;margin:0 auto -24px;width:145px;height:24px;background:#02050b;border-radius:0 0 18px 18px;z-index:5}.header{padding:36px 16px 10px;text-align:center;background:linear-gradient(#121d35,#0c1426);border-bottom:1px solid var(--line)}h1{font-size:22px;margin:0 0 4px}.status{font-size:13px;color:var(--muted)}.status.on{color:var(--accent)}.status.bad{color:var(--danger)}.callPanel{background:#0d172b;border-bottom:1px solid var(--line);padding:12px;display:grid;gap:9px}.bigButtons{display:grid;grid-template-columns:1fr 1fr;gap:9px}.bigButtons button,.connectRow button{font-size:16px;padding:14px 10px;border-radius:16px}.connectRow{display:grid;grid-template-columns:1.2fr .8fr .7fr;gap:8px}.help{font-size:12px;color:var(--muted);line-height:1.35}.devicePanel{padding:10px 12px;background:#091225;border-bottom:1px solid var(--line);display:grid;gap:8px}.deviceRow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}.deviceStatus{font-size:13px;color:var(--muted);line-height:1.4}.deviceStatus.good{color:var(--accent)}.deviceStatus.warn{color:var(--warn)}.deviceStatus.bad{color:var(--danger)}select{width:100%;border:1px solid var(--line);background:#071022;color:var(--text);border-radius:12px;padding:10px;font-size:14px}.screen{position:relative;background:#05080f;display:flex;align-items:center;justify-content:center;height:330px;min-height:240px;overflow:hidden}.screen video{width:100%;height:100%;object-fit:cover;background:#000}.noVideo{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:var(--muted);background:linear-gradient(135deg,#05080f,#121d35);font-size:18px}.remoteLabel{position:absolute;top:10px;left:12px;background:#0009;padding:6px 10px;border-radius:999px;font-size:13px}.local{position:absolute;right:12px;bottom:12px;width:34%;aspect-ratio:9/13;border:2px solid #fff7;border-radius:18px;overflow:hidden;background:#000;box-shadow:0 8px 20px #000a}.local video{width:100%;height:100%;object-fit:cover}.local .noVideo{font-size:12px;padding:8px}.controls{padding:12px;background:#0b1326;border-top:1px solid var(--line);display:grid;gap:10px}.row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}button{border:0;border-radius:16px;padding:12px 14px;background:var(--panel2);color:var(--text);font-size:15px;font-weight:700;cursor:pointer;box-shadow:inset 0 -2px 0 #0005}button:active{transform:translateY(1px)}button.primary{background:var(--accent);color:#042012}button.warn{background:var(--warn);color:#201400}button.danger{background:var(--danger);color:#fff}.ptt{height:78px;border-radius:26px;font-size:21px;background:#243654;touch-action:none}.ptt.talking{background:var(--accent);color:#052413;box-shadow:0 0 30px #28d17c88}textarea{width:100%;border:1px solid var(--line);background:#071022;color:var(--text);border-radius:12px;padding:10px;font-size:13px;min-height:70px;resize:vertical}.pill{font-size:12px;border:1px solid var(--line);padding:6px 10px;border-radius:999px;color:var(--muted)}@media(max-height:800px){.screen{height:250px}.ptt{height:62px}.header{padding-top:30px}}@media(max-width:390px){.connectRow{grid-template-columns:1fr}.bigButtons{grid-template-columns:1fr}.deviceRow{grid-template-columns:1fr}.phone{border-width:5px;border-radius:24px}.screen{height:230px}}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="notch"></div>
+  <div class="header"><h1>Video Walkie Phone v1.2</h1><div id="status" class="status">Checking devices...</div></div>
+
+  <div class="devicePanel">
+    <div id="deviceStatus" class="deviceStatus">Camera/microphone status will appear here.</div>
+    <div class="deviceRow"><select id="cameraSelect"><option value="">Auto camera</option></select><button id="checkBtn">Check</button></div>
+  </div>
+
+  <div class="callPanel">
+    <div class="help"><b>Call buttons are here:</b> Caller uses <b>Create Call</b>. Receiver pastes that code and uses <b>Answer Call</b>. Caller pastes the answer and uses <b>Finish Connect</b>. If no camera is found, the app uses audio-only walkie-talkie mode.</div>
+    <div class="bigButtons"><button id="makeOffer" class="primary">Create Call</button><button id="answerOffer" class="warn">Answer Call</button></div>
+    <textarea id="codeBox" placeholder="Call / answer code appears here, or paste a remote code here..."></textarea>
+    <div class="connectRow"><button id="connectAnswer" class="primary">Finish Connect</button><button id="copyBtn">Copy Code</button><button id="clearBtn">Clear</button></div>
+  </div>
+
+  <div class="screen"><video id="remoteVideo" autoplay playsinline></video><div id="remoteNoVideo" class="noVideo">Waiting for remote video/audio...</div><div class="remoteLabel">Remote caller</div><div class="local"><video id="localVideo" autoplay playsinline muted></video><div id="localNoVideo" class="noVideo">No local camera</div></div></div>
+
+  <div class="controls">
+    <button id="ptt" class="ptt">HOLD TO TALK</button>
+    <div class="row"><button id="startBtn" class="primary">Start Camera / Audio</button><button id="muteBtn">Mic Off</button><button id="camBtn">Camera Off</button><button id="hangBtn" class="danger">Hang Up</button></div>
+    <div class="row"><span class="pill">HTTPS or localhost required</span><span class="pill">Audio-only fallback</span><span class="pill">Manual code connection</span></div>
+  </div>
+</div>
+<script>
+const $=id=>document.getElementById(id);let pc,localStream,remoteStream,hasCamera=false,hasMic=false;const cfg={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]};
+function setStatus(txt,cls=''){const s=$('status');s.textContent=txt;s.className='status '+cls}
+function setDevice(txt,cls=''){const d=$('deviceStatus');d.textContent=txt;d.className='deviceStatus '+cls}
+function showLocalVideo(show){$('localNoVideo').style.display=show?'none':'flex'}
+function showRemoteVideo(show){$('remoteNoVideo').style.display=show?'none':'flex'}
+async function checkDevices(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.enumerateDevices){setDevice('Device check is not available in this browser. Try Chrome/Edge over HTTPS or localhost.','bad');setStatus('Device check unavailable','bad');return}
+  try{
+    let devices=await navigator.mediaDevices.enumerateDevices();
+    hasCamera=devices.some(d=>d.kind==='videoinput'); hasMic=devices.some(d=>d.kind==='audioinput');
+    const cams=devices.filter(d=>d.kind==='videoinput'); const sel=$('cameraSelect'); const old=sel.value; sel.innerHTML='<option value="">Auto camera</option>';
+    cams.forEach((c,i)=>{const o=document.createElement('option');o.value=c.deviceId;o.textContent=c.label||('Camera '+(i+1));sel.appendChild(o)}); if([...sel.options].some(o=>o.value===old))sel.value=old;
+    if(hasCamera&&hasMic){setDevice('Camera and microphone found. Video walkie-phone mode is available.','good');setStatus('Devices ready','on')}
+    else if(!hasCamera&&hasMic){setDevice('No camera found. Microphone found — audio-only walkie-talkie mode is available.','warn');setStatus('Audio-only available','on')}
+    else if(hasCamera&&!hasMic){setDevice('Camera found, but no microphone detected. Video can work, but walkie-talkie voice may not.','warn');setStatus('Camera only found','on')}
+    else{setDevice('No camera or microphone found. Plug in a webcam/microphone or check browser permissions.','bad');setStatus('No media devices found','bad')}
+    showLocalVideo(false);
+  }catch(e){setDevice('Could not check devices: '+e.message,'bad');setStatus('Device check failed','bad')}
+}
+async function startMedia(){
+  try{
+    if(localStream)return;
+    await checkDevices();
+    if(!hasCamera&&!hasMic)throw new Error('No camera or microphone was detected.');
+    const camId=$('cameraSelect').value;
+    const constraints={audio:hasMic?{echoCancellation:true,noiseSuppression:true}:false,video:hasCamera?(camId?{deviceId:{exact:camId}}:true):false};
+    localStream=await navigator.mediaDevices.getUserMedia(constraints);
+    const vtrack=localStream.getVideoTracks()[0];
+    if(vtrack){$('localVideo').srcObject=localStream;showLocalVideo(true);$('camBtn').disabled=false}else{$('localVideo').srcObject=null;showLocalVideo(false);$('camBtn').disabled=true;$('camBtn').textContent='No Camera'}
+    localStream.getAudioTracks().forEach(t=>t.enabled=false);
+    setStatus(vtrack?'Camera ready — hold button to talk':'Audio-only ready — hold button to talk','on');
+    await checkDevices();
+  }catch(e){setStatus('Camera/mic blocked or unavailable','bad');alert('Camera/mic failed: '+e.message+'\n\nUse HTTPS, localhost, or a hosted PWA. Also check browser camera/mic permissions.')}
+}
+function makePC(){if(pc)pc.close();pc=new RTCPeerConnection(cfg);remoteStream=new MediaStream();$('remoteVideo').srcObject=remoteStream;showRemoteVideo(false);pc.ontrack=e=>{e.streams[0].getTracks().forEach(t=>remoteStream.addTrack(t));showRemoteVideo(remoteStream.getVideoTracks().length>0)};pc.onconnectionstatechange=()=>{if(pc.connectionState==='connected')setStatus('Connected','on');if(['failed','disconnected','closed'].includes(pc.connectionState))setStatus('Disconnected','bad')};if(localStream)localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));}
+async function waitIce(){if(pc.iceGatheringState==='complete')return;await new Promise(res=>{pc.onicegatheringstatechange=()=>{if(pc.iceGatheringState==='complete')res()};setTimeout(res,5000)})}
+function pack(obj){return btoa(unescape(encodeURIComponent(JSON.stringify(obj))))}function unpack(txt){return JSON.parse(decodeURIComponent(escape(atob(txt.trim()))))}async function ensure(){await startMedia();makePC()}
+$('checkBtn').onclick=checkDevices;$('startBtn').onclick=startMedia;
+$('makeOffer').onclick=async()=>{try{await ensure();const offer=await pc.createOffer();await pc.setLocalDescription(offer);await waitIce();$('codeBox').value=pack(pc.localDescription);setStatus('Call code created — send it to the other person','on')}catch(e){alert('Create Call failed: '+e.message)}};
+$('answerOffer').onclick=async()=>{try{await ensure();const offer=unpack($('codeBox').value);await pc.setRemoteDescription(offer);const answer=await pc.createAnswer();await pc.setLocalDescription(answer);await waitIce();$('codeBox').value=pack(pc.localDescription);setStatus('Answer code created — send it back','on')}catch(e){alert('Answer Call failed: '+e.message)}};
+$('connectAnswer').onclick=async()=>{try{if(!pc)throw new Error('Create Call first, then paste the answer code.');const ans=unpack($('codeBox').value);await pc.setRemoteDescription(ans);setStatus('Connecting...','on')}catch(e){alert('Finish Connect failed: '+e.message)}};
+$('copyBtn').onclick=async()=>{try{await navigator.clipboard.writeText($('codeBox').value);setStatus('Code copied','on')}catch(e){$('codeBox').select();document.execCommand('copy');setStatus('Code copied','on')}};
+$('clearBtn').onclick=()=>{$('codeBox').value=''};$('hangBtn').onclick=()=>{if(pc)pc.close();if(remoteStream)remoteStream.getTracks().forEach(t=>t.stop());$('remoteVideo').srcObject=null;showRemoteVideo(false);setStatus('Call ended','bad')};
+$('muteBtn').onclick=()=>{if(!localStream)return;const a=localStream.getAudioTracks()[0];if(!a){$('muteBtn').textContent='No Mic';return}a.enabled=!a.enabled;$('muteBtn').textContent=a.enabled?'Mic On':'Mic Off'};$('camBtn').onclick=()=>{if(!localStream)return;const v=localStream.getVideoTracks()[0];if(!v){$('camBtn').textContent='No Camera';return}v.enabled=!v.enabled;$('camBtn').textContent=v.enabled?'Camera On':'Camera Off';showLocalVideo(v.enabled)};
+const ptt=$('ptt');function talk(on){if(!localStream)return;const a=localStream.getAudioTracks()[0];if(!a)return; a.enabled=on;ptt.classList.toggle('talking',on);ptt.textContent=on?'TALKING...':'HOLD TO TALK'}['mousedown','touchstart'].forEach(ev=>ptt.addEventListener(ev,e=>{e.preventDefault();talk(true)}));['mouseup','mouseleave','touchend','touchcancel'].forEach(ev=>ptt.addEventListener(ev,e=>{e.preventDefault();talk(false)}));
+window.addEventListener('load',checkDevices);
+</script>
+</body>
+</html>
